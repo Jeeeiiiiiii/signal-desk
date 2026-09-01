@@ -1,0 +1,30 @@
+# The GitOps contract.
+#
+# Nothing outside the cluster holds credentials to it. CI pushes a commit; this
+# controller, running inside the cluster, notices and pulls. Deploys are commits.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: signal-desk
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    # An IP for the same reason as the triage ConfigMap: Argo CD's repo-server
+    # runs as a pod, and pods cannot resolve Docker's embedded DNS names.
+    # In production this is your GitHub remote and the problem does not exist.
+    repoURL: http://172.19.0.10:3000/argocd/signal-desk.git
+    targetRevision: main
+    path: manifests
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: signal-desk
+
+  syncPolicy:
+    automated:
+      prune: true      # a manifest deleted from git is deleted from the cluster
+      selfHeal: true   # a manual kubectl edit is reverted to what git says
+    syncOptions:
+      - CreateNamespace=true
