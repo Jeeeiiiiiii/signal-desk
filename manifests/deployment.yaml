@@ -14,7 +14,9 @@ spec:
       containers:
         - name: triage
           # CI rewrites this tag. Argo CD notices the commit and syncs it.
-          image: ghcr.io/OWNER/signal-desk-triage:dev
+          # Locally the image is side-loaded into containerd, so never pull.
+          image: signal-desk-triage:local
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
