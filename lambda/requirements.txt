@@ -1,0 +1,2 @@
+# boto3 ships in the Lambda Python runtime; listed for local test runs only.
+boto3==1.34.162

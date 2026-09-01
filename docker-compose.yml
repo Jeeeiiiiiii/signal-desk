@@ -1,0 +1,28 @@
+# The triage app, for the phase-1 loop (before k3s is in play).
+#
+# This joins `floci_default`, the network created by the floci-ui project, so it
+# reaches the emulator by service name. Start floci-ui first.
+services:
+  triage:
+    build: ./app
+    ports:
+      - "8090:8080"
+    environment:
+      AWS_ENDPOINT_URL: http://floci:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      QUEUE_URL: ${QUEUE_URL:?run "terraform -chdir=terraform output -raw queue_url" and export it}
+      AUTH_MODE: ${AUTH_MODE:-off}
+      DB_PATH: /data/signal-desk.db
+    volumes:
+      - triage-data:/data
+    networks:
+      - floci_default
+
+volumes:
+  triage-data:
+
+networks:
+  floci_default:
+    external: true

@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Signal Desk</title>
+<style>
+  :root { --bg:#fbfbfa; --fg:#1a1a19; --mut:#6b6b68; --line:#e4e4e1; --card:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1a19; --fg:#eeeeec; --mut:#9a9a96; --line:#333331; --card:#232322; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 ui-sans-serif,system-ui,sans-serif; }
+  header { display:flex; align-items:baseline; gap:12px; padding:20px 24px; border-bottom:1px solid var(--line); }
+  h1 { font-size:16px; margin:0; letter-spacing:-.01em; }
+  .mut { color:var(--mut); font-size:12px; }
+  main { padding:24px; max-width:1000px; }
+  .row { display:grid; grid-template-columns:8px 1fr auto; gap:14px; align-items:start;
+         background:var(--card); border:1px solid var(--line); border-radius:8px;
+         padding:14px 16px; margin-bottom:8px; }
+  .sev { width:8px; border-radius:2px; align-self:stretch; }
+  .critical{background:#dc2626}.error{background:#ea580c}.warning{background:#ca8a04}.info{background:#0284c7}
+  .title { font-weight:600; }
+  .meta { color:var(--mut); font-size:12px; margin-top:3px; }
+  .resolved .title { text-decoration:line-through; opacity:.55; }
+  button { font:inherit; padding:5px 11px; border:1px solid var(--line); border-radius:6px;
+           background:transparent; color:var(--fg); cursor:pointer; }
+  button:hover { border-color:var(--mut); }
+  .empty { color:var(--mut); padding:40px 0; }
+  code { background:var(--line); padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+
+<header>
+  <h1>Signal Desk</h1>
+  <span class="mut">{{ incidents|selectattr('status','equalto','firing')|list|length }} firing</span>
+  <span class="mut" style="margin-left:auto">
+    {{ user.name }}{% if not user.responder %} (read-only){% endif %} · auth: {{ auth_mode }}
+  </span>
+</header>
+
+<main>
+  {% if not incidents %}
+    <p class="empty">No incidents. Send one with <code>scripts/send-alert.sh</code>.</p>
+  {% endif %}
+
+  {% for i in incidents %}
+  <div class="row {{ 'resolved' if i.status == 'resolved' }}">
+    <div class="sev {{ i.severity }}"></div>
+    <div>
+      <div class="title">{{ i.title }}</div>
+      <div class="meta">
+        {{ i.source }}{% if i.target %} · {{ i.target }}{% endif %}
+        · {{ i.occurrences }}&times;
+        {% if i.acked_by %} · acked by {{ i.acked_by }}{% endif %}
+        · <code>{{ i.fingerprint }}</code>
+      </div>
+      {% if i.description %}<div class="meta">{{ i.description }}</div>{% endif %}
+    </div>
+    <div>
+      {% if user.responder and i.status == 'firing' %}
+        {% if not i.acked_by %}
+        <button onclick="act('{{ i.fingerprint }}','ack')">Ack</button>
+        {% endif %}
+        <button onclick="act('{{ i.fingerprint }}','resolve')">Resolve</button>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</main>
+
+<script>
+  async function act(fp, what) {
+    const r = await fetch(`/api/incidents/${fp}/${what}`, { method: 'POST' });
+    if (r.ok) location.reload(); else alert((await r.json()).error);
+  }
+  // The board is a live view of queue-driven state, so it refreshes itself.
+  setTimeout(() => location.reload(), 15000);
+</script>

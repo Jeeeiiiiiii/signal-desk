@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triage
+  namespace: signal-desk
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: triage }
+  template:
+    metadata:
+      labels: { app: triage }
+    spec:
+      containers:
+        - name: triage
+          # CI rewrites this tag. Argo CD notices the commit and syncs it.
+          image: ghcr.io/OWNER/signal-desk-triage:dev
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AWS_ENDPOINT_URL
+              valueFrom: { configMapKeyRef: { name: triage, key: endpoint } }
+            - name: QUEUE_URL
+              valueFrom: { configMapKeyRef: { name: triage, key: queue_url } }
+            - name: AUTH_MODE
+              valueFrom: { configMapKeyRef: { name: triage, key: auth_mode } }
+            - name: AWS_ACCESS_KEY_ID
+              value: test
+            - name: AWS_SECRET_ACCESS_KEY
+              value: test
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+          readinessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 10
