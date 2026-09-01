@@ -4,7 +4,7 @@ metadata:
   name: triage
   namespace: signal-desk
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels: { app: triage }
   template:
