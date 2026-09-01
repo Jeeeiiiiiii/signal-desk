@@ -58,17 +58,20 @@ cd ..\signal-desk
 terraform -chdir=terraform init
 terraform -chdir=terraform apply -auto-approve
 
-# 3. Start the triage app
-$env:QUEUE_URL = "http://floci:4566/000000000000/signal-desk-events"
-docker compose up -d --build
+# 3. Bring up the cluster: k3s, Argo CD, Gitea
+docker compose -f docker-compose.cluster.yml up -d
+bash scripts/cluster-up.sh          # installs Argo CD, pushes to Gitea, syncs
 
 # 4. Send an alert
 $URL = terraform -chdir=terraform output -raw ingest_url
 bash scripts/send-alert.sh $URL critical HighErrorRate web-01
 ```
 
-Board at **http://localhost:8090**. Resources visible in the console at
-**http://localhost:4500**.
+Board at **http://localhost:30080**, served by the cluster. Resources visible in
+the console at **http://localhost:4500**. Gitea at **http://localhost:3000**.
+
+For the inner loop without a cluster, `docker compose up -d --build triage` runs
+the app directly against the queue on port 8090.
 
 ## What is real and what is not
 
@@ -101,15 +104,33 @@ Stated here rather than left for a reviewer to find:
 4. **`_decode_id_token` trusts the `groups` claim shape.** Entra emits group
    *object ids* by default; emitting names requires configuring the app
    registration.
-5. **Locally, k3s does not run on the EC2 instance.** Terraform provisions the
-   instance and its bootstrap, which is what happens in AWS. The emulator cannot
-   nest a container runtime inside an emulated instance, so the local cluster
-   runs alongside instead.
+5. **The app cannot scale past one replica.** State lives in a per-pod SQLite
+   file, so with two replicas the board's contents depend on which pod answers.
+   Found by scaling to 2 and back. Postgres is the fix; the pinned replica count
+   is the honest stopgap.
+6. **Locally, k3s does not run on the EC2 instance.** Terraform provisions the
+   instance, its security group and its bootstrap — and Floci does run it as a
+   real privileged Amazon Linux container with the UserData executed. But kubelet
+   cannot start inside it:
+
+   ```
+   cannot enter cgroupv2 "/sys/fs/cgroup/kubepods" with domain controllers
+   ```
+
+   Docker Desktop's WSL2 VM will not delegate cgroup v2 controllers to a nested
+   container — writes to `cgroup.procs` return `Operation not supported`. So the
+   local cluster runs beside the instance instead of on it. In AWS the UserData
+   in `scripts/node-bootstrap.sh` is what runs.
+7. **Two DNS pins.** `manifests/configmap.yaml` and `argocd/application.yaml`
+   hold IP addresses rather than names, because pods resolve through CoreDNS and
+   cannot reach Docker's embedded DNS at 127.0.0.11. Both are real DNS names in
+   AWS. Re-pin them if a container's address changes.
 
 ## Layout
 
 ```
 terraform/   S3, SQS, Lambda, IAM, EC2 node + security group
+argocd/      the Application: what Argo CD watches, and where
 lambda/      ingest: HMAC verify -> normalize -> archive -> enqueue
 app/         triage board: SQS consumer + Flask UI + OIDC
 manifests/   what Argo CD syncs into the cluster
