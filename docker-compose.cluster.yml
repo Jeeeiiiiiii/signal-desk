@@ -33,27 +33,8 @@ services:
     networks:
       - floci_default
 
-  # A real git remote for Argo CD to pull from.
-  #
-  # Argo CD's whole model is "the cluster reconciles toward what git says", so
-  # demonstrating it needs an actual git server rather than a local directory.
-  gitea:
-    image: gitea/gitea:1.22
-    environment:
-      GITEA__database__DB_TYPE: sqlite3
-      GITEA__server__ROOT_URL: http://gitea:3000/
-      GITEA__security__INSTALL_LOCK: "true"
-      GITEA__service__DISABLE_REGISTRATION: "false"
-    ports:
-      - "3000:3000"
-    volumes:
-      - gitea-data:/data
-    networks:
-      - floci_default
-
 volumes:
   k3s-server:
-  gitea-data:
 
 networks:
   floci_default:

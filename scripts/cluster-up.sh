@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# Bring the cluster half up: Argo CD, a git remote, and the first sync.
+# Bring the cluster half up: Argo CD, and the first sync from GitHub.
 #
 # Assumes `docker compose -f docker-compose.cluster.yml up -d` has run and that
 # terraform has been applied (the app needs a queue to consume).
 set -euo pipefail
 
 K3S=signal-desk-k3s-1
-GITEA=signal-desk-gitea-1
-GIT_USER=argocd
-GIT_PW=argocd-lab-pw
 
 echo "==> waiting for the node"
 until docker exec "$K3S" kubectl get nodes 2>/dev/null | grep -q " Ready "; do sleep 5; done
@@ -22,32 +19,28 @@ docker exec "$K3S" kubectl apply --server-side -n argocd \
   -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml >/dev/null
 docker exec "$K3S" kubectl wait --for=condition=available --timeout=600s -n argocd deploy/argocd-server
 
-echo "==> creating the git remote"
-docker exec -u git "$GITEA" gitea admin user create \
-  --username "$GIT_USER" --password "$GIT_PW" --email argocd@example.com \
-  --admin --must-change-password=false 2>/dev/null || echo "    user exists"
-curl -sf -X POST "http://localhost:3000/api/v1/user/repos" -u "${GIT_USER}:${GIT_PW}" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"signal-desk","private":false,"auto_init":false}' >/dev/null \
-  || echo "    repo exists"
-
-git remote remove gitea 2>/dev/null || true
-git remote add gitea "http://${GIT_USER}:${GIT_PW}@localhost:3000/${GIT_USER}/signal-desk.git"
-git push gitea HEAD:refs/heads/main
-
 echo "==> side-loading the app image (k3s has its own containerd)"
 docker build -q -t signal-desk-triage:local ./app
 mkdir -p .cluster && docker save signal-desk-triage:local -o .cluster/triage.tar
 docker cp .cluster/triage.tar "${K3S}:/tmp/triage.tar"
 docker exec "$K3S" ctr -n k8s.io images import /tmp/triage.tar >/dev/null
 
-echo "==> pinning addresses pods cannot resolve by name"
+# Pods cannot resolve Docker's embedded DNS names, so the emulator's address has
+# to be an IP. It is assigned at container start, so it can change between runs.
+# Argo CD pulls manifests from GitHub, so a changed address must be pushed there
+# before the cluster can see it -- this script will not push on your behalf.
+echo "==> checking the pinned emulator address"
 FLOCI_IP=$(docker inspect floci-ui-floci-1 --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-GITEA_IP=$(docker inspect "$GITEA" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
 sed -i "s|http://[0-9.]*:4566|http://${FLOCI_IP}:4566|g" manifests/configmap.yaml
-sed -i "s|http://[0-9.]*:3000|http://${GITEA_IP}:3000|g" argocd/application.yaml
-git add manifests/configmap.yaml argocd/application.yaml
-git diff --cached --quiet || { git commit -qm "re-pin lab addresses"; git push -q gitea HEAD:refs/heads/main; }
+if ! git diff --quiet manifests/configmap.yaml; then
+  echo
+  echo "    The emulator moved to ${FLOCI_IP}. manifests/configmap.yaml is updated"
+  echo "    locally, but Argo CD reads GitHub. Commit and push it, then re-run:"
+  echo
+  echo "      git commit -am 're-pin emulator address' && git push origin main"
+  echo
+  exit 1
+fi
 
 echo "==> handing the cluster to Argo CD"
 docker cp argocd/application.yaml "${K3S}:/tmp/application.yaml"

@@ -11,10 +11,10 @@ spec:
   project: default
 
   source:
-    # An IP for the same reason as the triage ConfigMap: Argo CD's repo-server
-    # runs as a pod, and pods cannot resolve Docker's embedded DNS names.
-    # In production this is your GitHub remote and the problem does not exist.
-    repoURL: http://172.19.0.10:3000/argocd/signal-desk.git
+    # The real remote. Argo CD's repo-server pod clones this over the internet,
+    # anonymously - the repo is public and read-only to the cluster. CI pushes
+    # here; the cluster pulls from here. One chain, no mirror to keep in sync.
+    repoURL: https://github.com/Jeeeiiiiiii/signal-desk.git
     targetRevision: main
     path: manifests
 

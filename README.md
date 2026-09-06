@@ -58,9 +58,9 @@ cd ..\signal-desk
 terraform -chdir=terraform init
 terraform -chdir=terraform apply -auto-approve
 
-# 3. Bring up the cluster: k3s, Argo CD, Gitea
+# 3. Bring up the cluster: k3s + Argo CD
 docker compose -f docker-compose.cluster.yml up -d
-bash scripts/cluster-up.sh          # installs Argo CD, pushes to Gitea, syncs
+bash scripts/cluster-up.sh          # installs Argo CD, syncs from GitHub
 
 # 4. Send an alert
 $URL = terraform -chdir=terraform output -raw ingest_url
@@ -68,7 +68,11 @@ bash scripts/send-alert.sh $URL critical HighErrorRate web-01
 ```
 
 Board at **http://localhost:30080**, served by the cluster. Resources visible in
-the console at **http://localhost:4500**. Gitea at **http://localhost:3000**.
+the console at **http://localhost:4500**.
+
+Argo CD pulls manifests from this repo on GitHub — the same remote CI pushes to.
+There is no local mirror, so a manifest change reaches the cluster only once it
+is pushed.
 
 For the inner loop without a cluster, `docker compose up -d --build triage` runs
 the app directly against the queue on port 8090.
@@ -86,8 +90,9 @@ executes in a real container.
 - `entra` — a real Entra tenant
 
 The mock will assert whatever claims you ask it to, so it proves nothing on its
-own. Screenshots in [`docs/`](docs/) are taken against a real tenant. Identity is
-the one thing worth not mocking.
+own — and it is not built yet. **The deployed lab runs `off`.** The OIDC code
+paths in `app/auth.py` have never been exercised against a real tenant, so treat
+them as written-but-unproven rather than working.
 
 ## Known weaknesses
 
@@ -121,10 +126,15 @@ Stated here rather than left for a reviewer to find:
    container — writes to `cgroup.procs` return `Operation not supported`. So the
    local cluster runs beside the instance instead of on it. In AWS the UserData
    in `scripts/node-bootstrap.sh` is what runs.
-7. **Two DNS pins.** `manifests/configmap.yaml` and `argocd/application.yaml`
-   hold IP addresses rather than names, because pods resolve through CoreDNS and
-   cannot reach Docker's embedded DNS at 127.0.0.11. Both are real DNS names in
-   AWS. Re-pin them if a container's address changes.
+7. **One DNS pin.** `manifests/configmap.yaml` holds the emulator's IP rather
+   than its name, because pods resolve through CoreDNS and cannot reach Docker's
+   embedded DNS at 127.0.0.11. In AWS this is a real endpoint and the problem
+   does not exist. Because Argo CD reads GitHub, a re-pin has to be committed
+   and pushed — `scripts/cluster-up.sh` detects the drift and stops rather than
+   pushing for you.
+8. **Auth is off in the running lab.** See above — nothing protects the board
+   locally. The authorization logic exists and is unit-tested; the login flow
+   in front of it is not.
 
 ## Layout
 
