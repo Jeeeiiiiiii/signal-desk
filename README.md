@@ -58,6 +58,13 @@ cd ..\signal-desk
 terraform -chdir=terraform init
 terraform -chdir=terraform apply -auto-approve
 
+# Floci persists to floci-ui/data, so resources survive a restart and this is
+# a no-op on the second run. For a genuine clean slate, clear both sides
+# together -- `docker compose down && rm -rf ../floci-ui/data/*` before the
+# apply, and delete terraform.tfstate with it. Clearing only one leaves
+# Terraform's memory disagreeing with what the emulator holds, and the apply
+# fails on BucketAlreadyExists / EntityAlreadyExists.
+
 # 3. Bring up the cluster: k3s + Argo CD
 docker compose -f docker-compose.cluster.yml up -d
 bash scripts/cluster-up.sh          # installs Argo CD, syncs from GitHub
