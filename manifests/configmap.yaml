@@ -8,6 +8,6 @@ data:
   # the node's resolver — and the node's Docker-embedded DNS (127.0.0.11) is not
   # reachable from inside a pod's network namespace. In AWS this is a real
   # DNS name; locally the emulator's address is pinned.
-  endpoint: "http://172.19.0.2:4566"
-  queue_url: "http://172.19.0.2:4566/000000000000/signal-desk-events"
+  endpoint: "http://172.18.0.2:4566"
+  queue_url: "http://172.18.0.2:4566/000000000000/signal-desk-events"
   auth_mode: "off"
