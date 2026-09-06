@@ -12,7 +12,10 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       AWS_DEFAULT_REGION: us-east-1
-      QUEUE_URL: ${QUEUE_URL:?run "terraform -chdir=terraform output -raw queue_url" and export it}
+      # Defaulted rather than required: Compose interpolates on every command,
+      # so `:?` made even `docker compose down` fail. The URL is derived from
+      # the queue name, which Terraform fixes, so the default is correct.
+      QUEUE_URL: ${QUEUE_URL:-http://floci:4566/000000000000/signal-desk-events}
       AUTH_MODE: ${AUTH_MODE:-off}
       DB_PATH: /data/signal-desk.db
     volumes:
