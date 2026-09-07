@@ -5,6 +5,13 @@
 # terraform has been applied (the app needs a queue to consume).
 set -euo pipefail
 
+# Git Bash rewrites anything that looks like a Unix path into a Windows one
+# before handing it to a native binary, so `docker exec ... /tmp/triage.tar`
+# arrived inside the container as C:/Users/.../Temp/triage.tar. Nothing here
+# mounts a host path, so switching the rewriting off is safe; on Linux and
+# macOS the variable is simply ignored.
+export MSYS_NO_PATHCONV=1
+
 K3S=signal-desk-k3s-1
 
 echo "==> waiting for the node"
@@ -14,8 +21,11 @@ echo "==> installing Argo CD"
 docker exec "$K3S" kubectl create namespace argocd --dry-run=client -o yaml \
   | docker exec -i "$K3S" kubectl apply -f -
 # Server-side apply: the ApplicationSet CRD exceeds the annotation size limit
-# that client-side apply relies on.
-docker exec "$K3S" kubectl apply --server-side -n argocd \
+# that client-side apply relies on. --force-conflicts because a cluster that
+# was bootstrapped once with a client-side apply records that as the owner of
+# these fields, and a later server-side apply refuses to touch them. We do
+# intend to own them: upstream's install.yaml is the only writer here.
+docker exec "$K3S" kubectl apply --server-side --force-conflicts -n argocd \
   -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml >/dev/null
 docker exec "$K3S" kubectl wait --for=condition=available --timeout=600s -n argocd deploy/argocd-server
 

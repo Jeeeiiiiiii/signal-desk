@@ -11,11 +11,22 @@
 services:
   k3s:
     image: rancher/k3s:v1.31.5-k3s1
+    # k3s names the Node after the container hostname, which Docker regenerates
+    # on every `up`. Without this, each restart registers a brand-new Node and
+    # the previous one lingers NotReady forever, holding its pods in Terminating
+    # -- including argocd-application-controller-0, whose StatefulSet will not
+    # recreate it while the old ordinal is still shutting down. Argo CD then
+    # reports Synced against whatever revision it last reconciled, days stale.
+    hostname: signal-desk-node
     command:
       - server
       - --disable=traefik
       - --disable=metrics-server
       - --write-kubeconfig-mode=644
+      # Hand pods a routable resolver instead of Docker's 127.0.0.11, which is
+      # a loopback address that means nothing inside a pod's netns. Argo CD has
+      # to resolve github.com. See cluster/resolv.conf.
+      - --resolv-conf=/etc/k3s-resolv.conf
     privileged: true
     tmpfs:
       - /run
@@ -26,6 +37,7 @@ services:
     volumes:
       - ./.cluster:/output
       - k3s-server:/var/lib/rancher/k3s
+      - ./cluster/resolv.conf:/etc/k3s-resolv.conf:ro
     ports:
       - "6443:6443"
       - "30080:30080"   # triage app NodePort
